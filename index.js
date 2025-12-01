@@ -6,56 +6,64 @@ import { v4 as uuidv4 } from "uuid";
 const app = express();
 app.use(bodyParser.json());
 
-// -----------------------------
-// New Order & Track Order Handler
-// -----------------------------
 app.post("/webhook", (req, res) => {
   const intent = req.body.queryResult.intent.displayName;
 
+  // ------------------------
+  // NEW ORDER
+  // ------------------------
   if (intent === "New Order") {
-    const params = req.body.queryResult.parameters;
+    const food = req.body.queryResult.parameters.food;
+    const quantity = req.body.queryResult.parameters.number;
+    const address = req.body.queryResult.parameters.address;
+    const phone = req.body.queryResult.parameters.phone;
 
-    const orderId = uuidv4().slice(0, 8); 
-    const { food_item, quantity, address, phone } = params;
+    const orderId = uuidv4(); // unique ID
 
-    db.run(
-      "INSERT INTO orders (id, food_item, quantity, address, phone, status) VALUES (?, ?, ?, ?, ?, ?)",
-      [orderId, food_item, quantity, address, phone, "Preparing"],
-      (err) => {
-        if (err) {
-          return res.json({
-            fulfillmentText:
-              "Something went wrong while placing your order. Please try again."
-          });
-        }
+    const query = `
+      INSERT INTO orders (id, food_item, quantity, address, phone, status)
+      VALUES (?, ?, ?, ?, ?, 'Pending')
+    `;
 
+    db.run(query, [orderId, food, quantity, address, phone], (err) => {
+      if (err) {
         return res.json({
-          fulfillmentText: `Your order has been placed! 🍔\nOrder ID: ${orderId}\nYou can track your order anytime by saying: Track order ${orderId}`
+          fulfillmentText: "Error placing order. Try again!"
         });
       }
-    );
-  } else if (intent === "Track Order") {
+
+      return res.json({
+        fulfillmentText: `Your order has been placed!  
+        Order ID: ${orderId}`
+      });
+    });
+  }
+
+  // ------------------------
+  // TRACK ORDER
+  // ------------------------
+  else if (intent === "Track Order") {
     const orderId = req.body.queryResult.parameters.order_id;
 
-    db.get(
-      "SELECT * FROM orders WHERE id = ?",
-      [orderId],
-      (err, row) => {
-        if (err || !row) {
-          return res.json({
-            fulfillmentText: "Sorry, I couldn't find any order with this ID."
-          });
-        }
-
+    db.get("SELECT status FROM orders WHERE id = ?", [orderId], (err, row) => {
+      if (err || !row) {
         return res.json({
-          fulfillmentText: `Your order status is: ${row.status}.\nFood: ${row.food_item}\nQuantity: ${row.quantity}`
+          fulfillmentText: "No order found for this ID."
         });
       }
-    );
-  } else {
-    res.json({ fulfillmentText: "I didn't understand that." });
+
+      return res.json({
+        fulfillmentText: `Your order status is: ${row.status}`
+      });
+    });
+  }
+
+  else {
+    return res.json({
+      fulfillmentText: "Sorry, I didn't understand that."
+    });
   }
 });
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log("Server running on port", port));
+app.listen(5000, () => console.log("Server running on port 5000"));
+
